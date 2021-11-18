@@ -1,0 +1,1 @@
+python -m torch.distributed.launch --nproc_per_node=8 --master_port=29509 dist_train.py --dataset cityscapes_16_1000
