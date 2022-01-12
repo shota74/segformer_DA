@@ -25,24 +25,26 @@ class cityscapesDataset(Dataset):
         synthia_set_16 = [0, 1, 2, 3, 4, 5, 6, 7, 8, 10, 11, 12, 13, 15, 17, 18]
         synthia_set_13 = [0, 1, 2, 6, 7, 8, 10, 11, 12, 13, 15, 17, 18]
 
-        self.root_dir = '/workspace/dataset/SYNTHIA/RAND_CITYSCAPES/'
+        self.root_dir = '/workspace/dataset/SYHTHIA/RAND_CITYSCAPES'
         self.stage = stage
-        #self.split
-        self.img_dir = os.path.join(root_dir, 'RGB')
-        self.label_dir = os.path.join(root_dir, 'GT', 'label_22')
+        self.split =split
+        self.img_dir = os.path.join(self.root_dir, 'RGB')
+        #print(self.img_dir)
+        self.label_dir = os.path.join(self.root_dir, 'GT', 'label_16')
         self.name_list_dir = os.path.join(self.img_dir, '*.png')
         #self.name_list_dir = self.recursive_glob(rootdir=self.img_dir, suffix='.png')
         #print(self.name_list_dir)
         #print(self.name_list_dir)
         self.name_list_dir = glob.glob(self.name_list_dir)
         self.name_list = load_img_name_list(self.name_list_dir)
+        #print(self.name_list_dir)
         self.id_to_trainid = {
             1: 10, 2: 2, 3: 0, 4: 1, 5: 4, 6: 8, 7: 5, 8: 13, 9: 7, 10: 11, 11: 18,
             12: 17, 15: 6, 16: 9, 17: 12, 18: 14, 19: 15, 20: 16, 21: 3
         }
 
         # Only consider 16 shared classes
-        self.class_16 = class_16
+        self.class_16 = True
         self.trainid_to_16id = {id: i for i, id in enumerate(synthia_set_16)}
         self.class_13 = False
         
@@ -59,10 +61,11 @@ class cityscapesDataset(Dataset):
         
         img_name = os.path.join(self.img_dir, os.path.basename(_img_name))
         image = np.asarray(imageio.imread(img_name))
-
+        ignore_label =255
         if self.stage == "train":
 
             label_dir = os.path.join(self.label_dir, os.path.basename(_img_name))
+            #print(label_dir)
             label = np.asarray(imageio.imread(label_dir))
 
             label_copy = ignore_label * np.ones(label.shape, dtype=np.float32)

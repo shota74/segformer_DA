@@ -23,11 +23,19 @@ import sys
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--config",
-                    default='configs/cityscapes16.yaml',
+                    default='configs/cityscapes.yaml',
                     type=str,
                     help="config")
 parser.add_argument("--dataset",
-                    default='synscapes',
+                    default='GTA5_to_cityscapes',
+                    type=str,
+                    help="datset")
+parser.add_argument("--dataset_sorcee",
+                    default='GTA5',
+                    type=str,
+                    help="datset")
+parser.add_argument("--dataset_target",
+                    default='cityscapes',
                     type=str,
                     help="datset")
 parser.add_argument('--resume', type=str, default=None,
@@ -109,7 +117,7 @@ def validate(model=None, criterion=None, data_loader=None, cfg=None):
 
 def train(cfg):
     #scaler = torch.cuda.amp.GradScaler()
-    num_workers = 16
+    num_workers = 8
     if args.local_rank==0:
         saver = Saver(args)
     print(args)
@@ -121,8 +129,8 @@ def train(cfg):
     dist.init_process_group(backend=args.backend,)
     time0 = datetime.datetime.now()
     time0 = time0.replace(microsecond=0)
-    
-    train_loader, val_loader, test_loader, train_sampler = make_data_loader(cfg, args.dataset, num_workers)
+    sorce_train_loader, _, _, _ = make_data_loader(cfg, args.dataset_sorcee, num_workers)
+    train_loader, val_loader, test_loader, train_sampler = make_data_loader(cfg, args.dataset_target, num_workers)
 
     '''
     if torch.cuda.is_available() is True:
@@ -183,19 +191,27 @@ def train(cfg):
         optimizer.load_state_dict(checkpoint['optimizer'])
 
     train_sampler.set_epoch(0)
+    sorce_train_loader_iter = iter(sorce_train_loader)
     train_loader_iter = iter(train_loader)
+
     best_IoU= 0
 
     #for n_iter in tqdm(range(cfg.train.max_iters), total=cfg.train.max_iters, dynamic_ncols=True):
     for n_iter in range(start_iter, cfg.train.max_iters):
-        
-        try:
-            _, inputs, labels = next(train_loader_iter)
-        except:
-            train_sampler.set_epoch(n_iter)
-            train_loader_iter = iter(train_loader)
-            _, inputs, labels = next(train_loader_iter)
-        
+        if random.random() < 0.5:
+            try:
+                _, inputs, labels = next(train_loader_iter)
+            except:
+                train_sampler.set_epoch(n_iter)
+                train_loader_iter = iter(train_loader)
+                _, inputs, labels = next(train_loader_iter)
+        else:
+            try:
+                _, inputs, labels = next(sorce_train_loader_iter)
+            except:
+                train_sampler.set_epoch(n_iter)
+                sorce_train_loader_iter = iter(sorce_train_loader)
+                _, inputs, labels = next(sorce_train_loader_iter)
 
         inputs = inputs.to(device, non_blocking=True)
         labels = labels.to(device, non_blocking=True)
@@ -223,10 +239,10 @@ def train(cfg):
             logging.info("Iter: %d; Elasped: %s; ETA: %s; LR: %.3e; seg_loss: %f"%(n_iter+1, delta, eta, lr, loss.item()))
         
         if (n_iter+1) % cfg.train.eval_iters == 0:
-            is_best = False
             if args.local_rank==0:
                 logging.info('Validating...')
             val_loss, val_score = validate(model=wetr, criterion=criterion, data_loader=val_loader,cfg = cfg)
+            is_best = False
             if args.local_rank==0:
                 logging.info(val_score)
                 if best_IoU < val_score["Mean IoU"]:
@@ -250,7 +266,7 @@ if __name__ == "__main__":
     cfg = OmegaConf.load(args.config)
 
     if args.local_rank == 0:
-        setup_logger(filename='test_city' + args.dataset+ '.log')
+        setup_logger(filename='mix_city_' + args.dataset+ '.log')
         logging.info('\nconfigs: %s' % cfg)
     #setup_seed(1)
     
