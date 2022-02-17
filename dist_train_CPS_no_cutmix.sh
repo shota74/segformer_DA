@@ -1,1 +1,0 @@
-python -m torch.distributed.launch --nproc_per_node=8 --master_port=29509 dist_train_CPS_no_cutmix.py --resume_r ./run/synscapes/model_l/checkpoint.pth.tar --resume_l ./run/synscapes/model_r/checkpoint.pth.tar 

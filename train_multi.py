@@ -17,7 +17,7 @@ from core.sync_batchnorm.replicate import patch_replication_callback
 from core.sync_batchnorm import convert_model, DataParallelWithCallback
 from tqdm import tqdm
 
-from core.model import WeTr_bn2d
+from core.model_multi import WeTr
 from datasets_ import make_data_loader
 from utils import eval_seg
 from utils.optimizer import PolyWarmupAdamW
@@ -26,14 +26,14 @@ import sys
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--config",
-                    default='configs/cityscapes.yaml',
+                    default='configs/cityscapes_multi.yaml',
                     type=str,
                     help="config")
 parser.add_argument("--dataset",
                     default='cityscapes',
                     type=str,
                     help="datset")
-parser.add_argument('--gpu-ids', type=str, default='0,1',
+parser.add_argument('--gpu-ids', type=str, default='0,1,2,3,4,5,6,7',
                     help='use which gpu to train, must be a \
                     comma-separated list of integers only (default=0)')
 parser.add_argument('--resume', type=str, default=None,
@@ -54,7 +54,7 @@ def setup_seed(seed):
     random.seed(seed)
     torch.backends.cudnn.deterministic = True
 
-def setup_logger(filename='test.log'):
+def setup_logger(filename='test_multi.log'):
     ## setup logger
     #logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(filename)s - %(levelname)s: %(message)s') 
     logFormatter = logging.Formatter('%(asctime)s - %(filename)s - %(levelname)s: %(message)s')
@@ -110,6 +110,8 @@ def slide_inference(img,cls_ind, model, rescale,stride=(512,512), crop_size = (7
                 crop_img = img[:, :, y1:y2, x1:x2]
                 #crop_seg_logit = self.encode_decode(crop_img, img_meta)
                 crop_seg_logit = model(crop_img,cls_ind)
+                print(crop_seg_logit.shape)
+                print(crop_img.shape[1:])
                 crop_seg_logit = F.interpolate(crop_seg_logit,
                                             size=crop_img.shape[1:],
                                             mode='bilinear',
@@ -135,6 +137,9 @@ def validate(model=None, criterion=None, data_loader=None, cfg=None, data_id=Non
     val_loss = 0.0
     preds, gts = [], []
     model.eval()
+    device = torch.device('cuda')
+    print(len(data_loader))
+    data_loader = iter(data_loader)
 
     with torch.no_grad():
         #for cls_ind in range(len(data_loader)):
@@ -143,39 +148,41 @@ def validate(model=None, criterion=None, data_loader=None, cfg=None, data_id=Non
             _, inputs, labels = data
 
             #inputs = inputs.to()
-            #labels = labels.to(inputs.device)
-            output = slide_inference(inputs,
-                                     data_id,
-                                     model,
-                                     rescale=False,
-                                     crop_size=(cfg.dataset.crop_size,cfg.dataset.crop_size),
-                                     num_classes=num_classes[data_id])
+            inputs = inputs.to(device, non_blocking=True)
+            #labels = labels.to(device, non_blocking=True) 
+            # output = slide_inference(inputs,
+            #                          data_id,
+            #                          model,
+            #                          rescale=False,
+            #                          crop_size=(cfg.dataset.crop_size,cfg.dataset.crop_size),
+            #                          num_classes=num_classes[data_id])
 
-            #outputs = model(inputs, data_id)
+            outputs = model(inputs, data_id)
             labels = labels.long().to(outputs.device)
 
-            # resized_outputs = F.interpolate(outputs,
-            #                                 size=labels.shape[1:],
-            #                                 mode='bilinear',
-            #                                 align_corners=False)
+            resized_outputs = F.interpolate(outputs,
+                                            size=labels.shape[1:],
+                                            mode='bilinear',
+                                            align_corners=False)
 
-            loss = criterion(output, labels)
+            loss = criterion(resized_outputs, labels)
             val_loss += loss
 
             preds += list(
-                torch.argmax(output,
+                torch.argmax(resized_outputs,
                             dim=1).cpu().numpy().astype(np.int16))
             gts += list(labels.cpu().numpy().astype(np.int16))
-
+            
+    
     score = eval_seg.scores(gts, preds,num_classes=cfg.dataset.num_classes)
 
     return val_loss.cpu().numpy() / float(len(data_loader)), score
 
 def train(cfg):
 
-    num_workers = 16
+    num_workers = 8
     # if args.local_rank==0:
-    #     saver = Saver(args)
+    saver = Saver(args)
     #     print(args)
     #saver.save_experiment_config()
 
@@ -189,15 +196,15 @@ def train(cfg):
     time0 = datetime.datetime.now()
     time0 = time0.replace(microsecond=0)
     args.gpu_ids = [int(s) for s in args.gpu_ids.split(',')]
-
+    train_size = 0
     for i in range(len(args.datasets_list)):
         dataset = args.datasets_list[i]
     
-        train_loader, val_loader, test_loader, _, num_classe = make_data_loader(cfg, args.dataset, num_workers)
+        train_loader, val_loader, test_loader, _, num_classe = make_data_loader(cfg, dataset, num_workers)
         train_size += len(train_loader)
         dataloader_list_train.append(train_loader)
         dataloader_list_val.append(val_loader)
-        dataloader_list_nclass.append(nclass)
+        dataloader_list_nclass.append(num_classe)
         num_classes.append(num_classe)
 
 
@@ -212,8 +219,8 @@ def train(cfg):
     '''
     device = torch.device('cuda')
     #device  =torch.device(args.local_rank)
-    wetr = WeTr_bn2d(backbone=cfg.exp.backbone,
-                num_classes=num_classes
+    wetr = WeTr(backbone=cfg.exp.backbone,
+                num_classes=num_classes,
                 embedding_dim=768,
                 pretrained=True)
     param_groups = wetr.get_param_groups()
@@ -290,6 +297,7 @@ def train(cfg):
             #sys.exit()
             if losss == 0:
                 seg_loss = criterion(outputs, labels.type(torch.long))
+                losss +=1
             else:
                 seg_loss += criterion(outputs, labels.type(torch.long))
             #sys.exit()
@@ -309,8 +317,12 @@ def train(cfg):
             #if args.local_rank==0:
             logging.info('Validating...')
             sum_iou= 0
+            data_iter_list_val = []
+            for i in range(len(dataloader_list_train)):
+                data_iter_list_val.append(iter(dataloader_list_val[i]))
+
             for data_id in range(len(data_iter_list_val)):
-                val_loss, val_score = validate(model=wetr, criterion=criterion, data_loader=data_iter_list_val[data_id],cfg = cfg, data_id = data_id, num_classes =num_classes)
+                val_loss, val_score = validate(model=wetr, criterion=criterion, data_loader=data_iter_list_val[data_id], cfg = cfg, data_id = data_id, num_classes =num_classes)
                 #if args.local_rank==0:
                 logging.info(val_score)
                 sum_iou += val_score["Mean IoU"]
@@ -318,12 +330,13 @@ def train(cfg):
             if best_IoU < sum_iou:
                 is_best = True
                 best_IoU = sum_iou
-                saver.save_checkpoint({
-                    'iter': n_iter+1,
-                    'state_dict': wetr.module.state_dict(),
-                    'optimizer': optimizer.state_dict(),
-                    'best_pred': best_IoU,
-                }, is_best)
+
+            saver.save_checkpoint({
+                'iter': n_iter+1,
+                'state_dict': wetr.module.state_dict(),
+                'optimizer': optimizer.state_dict(),
+                'best_pred': best_IoU,
+            }, is_best)
 
 
     return True

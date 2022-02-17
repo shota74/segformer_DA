@@ -24,7 +24,7 @@ class WeTr(nn.Module):
 
         self.decoder = SegFormerHead(feature_strides=self.feature_strides, in_channels=self.in_channels, embedding_dim=self.embedding_dim, num_classes=self.num_classes)
         
-        self.classifier = nn.Conv2d(in_channels=self.in_channels[-1], out_channels=self.num_classes, kernel_size=1, bias=False)
+        self.classifier = nn.Conv2d(in_channels=self.in_channels[-1], out_channels=19, kernel_size=1, bias=False)
 
     def _forward_cam(self, x):
         

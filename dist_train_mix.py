@@ -30,7 +30,7 @@ parser.add_argument("--dataset",
                     default='GTA5_to_cityscapes',
                     type=str,
                     help="datset")
-parser.add_argument("--dataset_sorcee",
+parser.add_argument("--dataset_sorce",
                     default='GTA5',
                     type=str,
                     help="datset")
@@ -81,7 +81,7 @@ def cal_eta(time0, cur_iter, total_iter):
     eta = time_fin.replace(microsecond=0) - time_now
     return str(delta), str(eta)
 
-def validate(model=None, criterion=None, data_loader=None, cfg=None):
+def validate(model=None, criterion=None, data_loader=None, cfg=None, class_type=None):
 
     val_loss = 0.0
     preds, gts = [], []
@@ -111,7 +111,11 @@ def validate(model=None, criterion=None, data_loader=None, cfg=None):
                              dim=1).cpu().numpy().astype(np.int16))
             gts += list(labels.cpu().numpy().astype(np.int16))
 
-    score = eval_seg.scores(gts, preds,num_classes=cfg.dataset.num_classes)
+    if class_type == 'SYNTHIA':
+        synthia = True
+    else:
+        synthia = False
+    score = eval_seg.scores(gts, preds,num_classes=cfg.dataset.num_classes, synthia=synthia)
 
     return val_loss.cpu().numpy() / float(len(data_loader)), score
 
@@ -129,7 +133,7 @@ def train(cfg):
     dist.init_process_group(backend=args.backend,)
     time0 = datetime.datetime.now()
     time0 = time0.replace(microsecond=0)
-    sorce_train_loader, _, _, _ = make_data_loader(cfg, args.dataset_sorcee, num_workers)
+    sorce_train_loader, _, _, _ = make_data_loader(cfg, args.dataset_sorce, num_workers)
     train_loader, val_loader, test_loader, train_sampler = make_data_loader(cfg, args.dataset_target, num_workers)
 
     '''
@@ -241,7 +245,7 @@ def train(cfg):
         if (n_iter+1) % cfg.train.eval_iters == 0:
             if args.local_rank==0:
                 logging.info('Validating...')
-            val_loss, val_score = validate(model=wetr, criterion=criterion, data_loader=val_loader,cfg = cfg)
+            val_loss, val_score = validate(model=wetr, criterion=criterion, data_loader=val_loader,cfg = cfg, class_type = args.dataset_sorce)
             is_best = False
             if args.local_rank==0:
                 logging.info(val_score)

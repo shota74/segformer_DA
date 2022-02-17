@@ -32,31 +32,35 @@ class SegFormerHead(nn.Module):
         super(SegFormerHead, self).__init__()
         self.in_channels = in_channels
         self.num_classes = num_classes
+
+        print(self.num_classes)
         assert len(feature_strides) == len(self.in_channels)
         assert min(feature_strides) == feature_strides[0]
         self.feature_strides = feature_strides
-        num_class=2
-
+        #num_class=
         c1_in_channels, c2_in_channels, c3_in_channels, c4_in_channels = self.in_channels
 
         #decoder_params = kwargs['decoder_params']
         #embedding_dim = decoder_params['embed_dim']
 
-        self.linear_c4 = nn.ModuleList([MLP(input_dim=c4_in_channels, embed_dim=embedding_dim)for i in range(num_class)])
-        self.linear_c3 = nn.ModuleList([MLP(input_dim=c3_in_channels, embed_dim=embedding_dim)for i in range(num_class)])
-        self.linear_c2 = nn.ModuleList([MLP(input_dim=c2_in_channels, embed_dim=embedding_dim)for i in range(num_class)])
-        self.linear_c1 = nn.ModuleList([MLP(input_dim=c1_in_channels, embed_dim=embedding_dim)for i in range(num_class)])
+        self.linear_c4 = nn.ModuleList([MLP(input_dim=c4_in_channels, embed_dim=embedding_dim)for i in range(len(num_classes))])
+        self.linear_c3 = nn.ModuleList([MLP(input_dim=c3_in_channels, embed_dim=embedding_dim)for i in range(len(num_classes))])
+        self.linear_c2 = nn.ModuleList([MLP(input_dim=c2_in_channels, embed_dim=embedding_dim)for i in range(len(num_classes))])
+        self.linear_c1 = nn.ModuleList([MLP(input_dim=c1_in_channels, embed_dim=embedding_dim)for i in range(len(num_classes))])
         self.dropout = nn.Dropout2d(0.1)
 
         self.linear_fuse = nn.ModuleList([ConvModule(
             in_channels=embedding_dim*4,
             out_channels=embedding_dim,
             kernel_size=1,
-            norm_cfg=dict(type='SyncBN', requires_grad=True)
-            #norm_cfg=dict(type='BN2d', requires_grad=True)
-        )for i in range(num_class)])
+            #norm_cfg=dict(type='SyncBN', requires_grad=True)
+            norm_cfg=dict(type='BN2d', requires_grad=True)
+        )for i in range(len(num_classes))])
 
-        self.linear_pred = nn.ModuleList([nn.Conv2d(embedding_dim, self.num_classes, kernel_size=1)for i in range(num_class)])
+        self.linear_pred = nn.ModuleList([nn.Conv2d(embedding_dim, num_classes[i], kernel_size=1, stride=1) for i in range(len(num_classes))])
+        #nn.ModuleList([nn.Conv2d(embedding_dim, self.num_classes[i], kernel_size=1)for i in range(len(num_class))])
+
+        
 
     def forward(self, x, cls_lind):
 

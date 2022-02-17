@@ -23,11 +23,11 @@ import sys
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--config",
-                    default='configs/cityscapes16.yaml',
+                    default='configs/cityscapes.yaml',
                     type=str,
                     help="config")
 parser.add_argument("--dataset",
-                    default='cityscapes_16',
+                    default='cityscapes',
                     type=str,
                     help="datset")
 parser.add_argument('--resume', type=str, default=None,
@@ -74,14 +74,14 @@ def cityscapes():
         [30,170,250],
         [0,220,220],
         [35,142,107],
-        #[152,251,152],
+        [152,251,152],
         [180,130,70],
         [60,20,220],
         [0,0,255],
         [142,0,0],
-        #[70,0,0],
+        [70,0,0],
         [100,60,0],
-        #[100,80,0],
+        [100,80,0],
         [230,0,0],
         [32,11,119]], dtype=np.uint8)
     return label
@@ -114,7 +114,6 @@ def validate(model=None, criterion=None, data_loader=None, cfg=None):
             #labels = labels.to(inputs.device)
 
             outputs = model(inputs)
-            label_ = labels
             labels = labels.long().to(outputs.device)
 
             resized_outputs = F.interpolate(outputs,
@@ -126,8 +125,8 @@ def validate(model=None, criterion=None, data_loader=None, cfg=None):
 
             loss = criterion(resized_outputs, labels)
             val_loss += loss
-            resu = label_.cpu().numpy()
-            #resu = np.argmax(resu, axis=1)
+            resu = resized_outputs.cpu().numpy()
+            resu = np.argmax(resu, axis=1)
             resu = np.transpose(resu, axes=[1, 2, 0])
 
             height, width, color = resu.shape # 幅・高さ・色を取得
